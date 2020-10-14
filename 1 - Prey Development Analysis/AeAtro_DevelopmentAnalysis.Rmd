@@ -1,0 +1,65 @@
+---
+title: "Temperature-Dependent Prey Development Model"
+author: "Andy Davidson"
+date: "10/14/2020"
+output: word_document
+---
+
+```{r}
+require( bbmle )
+require( lme4 )
+require( broom )
+require( nlstools )
+require( propagate )
+
+devdata <- read.csv( "ModelingFunctions.R" )
+source( TDPred_Functions.R )
+```
+
+The following document contains code used to model the temperature-dependence of larval development and mortality rates for rock pool mosquitoes (<i>Aedes atropalpus</i>). 
+
+```{r}
+#Arrhenius-rate model:
+sv <- list( c = 0.4, b = -1 )
+arr.rate.model <-  nls(
+  DevRate ~ arr.rate( c, b, Temp ),
+  data = devdata,
+  start = sv,
+  trace = TRUE
+)
+
+#Arrhenius-time model:
+sv <- list( c = 0.4, b = -1 )
+arr.time.model <- nls(
+  DevTime ~ arr.time( c, b, Temp ),
+  data = devdata, 
+  start = sv,
+  trace = TRUE
+)
+
+#Save the parameters below for both fits:
+parms_atro_rate <- tidy( arr.rate.model )
+parms_atro_time <- tidy( arr.time.model )
+
+parms_atro_rate$model <- c( "arr.rate" )
+parms_atro_time$model <- c( "arr.time" )
+
+write.csv( parms_atro_rate, "Parms_PreyDev.csv", row.names = FALSE )
+```
+
+Next, we'll fit a model describing temperature-dependent mortality rates for <i>Aedes atropalpus</i>. This is a little trickier, because there's a lot less precedent for it in the literature. Due to the shape of the data, I've decided to fit this as a logistic model, shown below.
+
+```{r}
+#First, we convert the survivorship data in the .csv to a daily rate:
+devdata$MortalityRate <- ( ( 1 - devdata$Survivorship ) / devdata$DevTime )
+
+#Then, we fit the model:
+logisticcurve <- nls( MortalityRate ~ ( 1 / ( 1 + exp( -r * ( Temp - x1 ) ) ) + y1 ), start = list( x1 = 34, y1 = 0.015,r = 0.1), data = devdata, trace=TRUE )
+
+summary( logisticcurve )
+
+#This yields the following parameters:
+parms_atromort <- tidy( logisticcurve )
+write.csv( parms_atromort, "Parms_PreyMort.csv", row.names = FALSE )
+```
+

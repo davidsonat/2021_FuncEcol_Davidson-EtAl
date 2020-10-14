@@ -1,0 +1,83 @@
+---
+title: "Temperature-Dependent Functional Response Models"
+author: "Andy Davidson"
+date: "10/14/2020"
+output: html_document
+---
+
+# FR Fits for Fall 2018 Temp-Dependent Functional Responses for Ae. Atropalpus Prey
+
+```{r}
+#Load in data
+erdat <- read.csv( "ErSimp_FRData.csv" )
+pddat <- read.csv( "PdLong_FRData.csv" )
+
+require( emdbook )
+require( bbmle )
+require( R2WinBUGS )
+require( plotrix )
+require( plyr )
+require( Hmisc )
+require( broom )
+
+source( "ModelingFunctions.R" )
+```
+
+All functional responses shown here are being fit with depletion, using the equation for Roger's Type II functional response. Data are log-transformed, as suggested by Uzsko et al. 2020 (Ecosphere).
+
+There are several candidate models for the shape of the temperature-dependence of attack rate and handling time, but we'll be using the ones described by Sentis et al. 2012.
+
+##First Predator: *Erythemis simplicicollis*
+
+Now, we'll attempt to fit the functional response for Erythemis. The current fit uses a general value for Tl for Libellulids (42.2C, from Garten and Gentry 1976), and an estimate for T0 (10C; based on growth CTmin, Suhling et al. 2015):
+
+```{r}
+erdat$TempK <- erdat$Temp + 273.15
+sv.log <- list( b = log( 1.105563e-01 ), h0 = log( 1.99775e-14 ), Eh = log( 0.65 ) )
+
+frfit_ery <-
+  mle2(
+    Killed ~ dbinom( prob = (
+      rogers.sentis.risk.log( N0, b, T0 = log( 283.15 ), Tl = log( 315.35 ), h0, M = 114.2, bh = 0.75, Eh, k = 8.62e-5, TempK, t = 1 )
+    ),
+    size = N0 ),
+    start = sv.log,
+    trace = TRUE,
+    data = erdat
+  )
+
+summary( frfit_ery )
+parms_ery <- tidy( frfit_ery )
+```
+
+##Second predator: *Pachydiplax longipennis*
+
+We will follow the same exact procedure as above for the Pachydiplax fits. 
+
+```{r}
+pddat$TempK <- pddat$Temp + 273.15
+sv.log <- list( b = log( 3.2e-02 ), h0 = log( 2.1e-07 ), Eh = log( 0.22 ) )
+
+frfit_pachy <-
+  mle2(
+    Killed ~ dbinom( prob = (
+      rogers.sentis.risk.log( N0, b, T0 = log( 283.15 ), Tl = log( 314.85 ), h0, M = 68.7, bh = 0.75, Eh, k = 8.62e-5, TempK, t = 1)
+    ),
+    size = N0 ),
+    start = sv.log,
+    trace = TRUE,
+    data = pddat
+  )
+
+summary( frfit_pachy )
+parms_pachy <- tidy( frfit_pachy )
+
+# Clean up and write data to a file
+predparms <- rbind( parms_ery, parms_pachy )
+predspp <- c( "ErSimp", "ErSimp", "ErSimp", "PdLong", "PdLong", "PdLong" )
+predparms[ "spp" ] <- predspp
+predparms <- predparms[ c( "spp", "term", "estimate", "std.error" ) ]
+
+write.csv( predparms, "Parms_PredFR.csv", row.names = FALSE )
+```
+

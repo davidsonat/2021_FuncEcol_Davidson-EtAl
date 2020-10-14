@@ -1,0 +1,165 @@
+---
+title: "Temperature-Dependent Predation Model"
+author: "Andy Davidson"
+date: "10/14/2020"
+output: word_document
+---
+
+```{r}
+require( emdbook )
+source( "ModelingFunctions.R" )
+```
+
+First, we define the r_dev and m values we'll be using. These are daily rates, and r_dev is scaled up by 5, because the model's r_dev is instar-dependent while our experimentally-derived development rates are for the entire development period to adulthood. These parameters come from the analysis performed in AeAtro_DevelopmentAnalysis.rmd.
+
+```{r}
+PreyDev.df <- read.csv( "Parms_PreyDev.csv" )
+PreyMort.df <- read.csv( "Parms_PreyMort.csv" )
+
+# Set prediction interval
+temp <- seq( 20, 36 )
+
+# Vector of temperature-dependent transition rates
+rvec <- ( ( arr.rate( c_dev = PreyDev.df[ 1, 2 ], b_dev = PreyDev.df[ 2, 2 ], temp ) ) * 5 )
+
+# Vector of temperature-dependent mortality rates
+mvec <- logisticfun( temp, r_mort = PreyMort.df[ 3, 2 ], x1 = PreyMort.df[ 1, 2 ], y1 = PreyMort.df[ 2, 2 ] )
+```
+
+The functional responses here use a hump-shaped fit for attack rate and an Arrhenius fit for handling time, fitted with depletion (as in Sentis et al. 2012).
+
+This block allow us to randomly sample values for the fitted constants from their distributions to create "confidence intervals" of sorts.
+
+With those established, let's run the model itself for both predators. 
+
+For Erythemis:
+
+```{r}
+num_reps <- 3000
+Summary <- mat.or.vec( num_reps * length( temp ), 6 ) # Creates a matrix of r_dev and p values for storing the model output, with five columns
+colnames( Summary ) <- c( "rep", "b", "h0", "Eh", "temp", "num_survive" ) # Names the columns in the matrix
+
+#Parameter estimates:
+Parms <- read.csv( "Parms_PredFR.csv" )
+
+ErParms <- subset( Parms, spp == "ErSimp" )
+
+#Some constants:
+k <- 8.617e-5
+bh <- 0.75
+t <- 1
+M <- ErParms[ 4, 3 ]
+T0 <- ErParms[ 5, 3 ]
+Tl <- ErParms[ 6, 3 ]
+
+row <- 0
+u <- 1
+seednum <- 1
+
+for ( r in 1:num_reps ) {
+  set.seed( 1 + r )
+  
+  b <- rlnorm( 1, meanlog = ErParms$estimate[ which( ErParms$term == "b" ) ],
+               sdlog = ErParms$std.error[ which( ErParms$term == "b" ) ] )
+  h0 <- rlnorm( 1, meanlog = ErParms$estimate[ which( ErParms$term == "h0" ) ],
+               sdlog = ErParms$std.error[ which( ErParms$term == "h0" ) ] )
+  Eh <- rlnorm( 1, meanlog = ErParms$estimate[ which( ErParms$term == "Eh" ) ],
+               sdlog = ErParms$std.error[ which( ErParms$term == "Eh" ) ] )
+
+  for ( l in 1:length( temp ) ) {
+    row <- row + 1
+    N_vec <- c( 300, 0, 0, 0, 0) #Vector of prey abundance at each size class at the current time step. This starts with 300 1st instar larvae.
+    Summary[ row, "b" ] <- b
+    Summary[ row, "Eh" ] <- Eh
+    Summary[ row, "h0" ] <- h0
+    Summary[ row, "rep" ] = r #rep number
+    Summary[ row, "temp" ] = temp[ l ] #Temperature for this loop
+    Summary[ row, "num_survive" ] = Stage_pred_devel(
+      timesteps = 30,
+      N_vec,
+      mval = mvec[ l ],
+      rval = rvec[ l ],
+      bval = b,
+      T0val = T0,
+      Tlval = Tl,
+      h0val = h0,
+      bhval = bh,
+      Ehval = Eh,
+      Mval = M,
+      kval = k,
+      tval = t,
+      tempval = temp[ l ]
+    )
+  }
+}
+
+
+Er_Summary.df <- as.data.frame( Summary )
+
+write.csv( Er_Summary.df, "Output_ErSimp.csv", row.names = FALSE)
+```
+
+For Pachydiplax:
+
+```{r}
+Summary <- mat.or.vec( num_reps * length( temp ), 6 ) #Creates a matrix of r and p values for storing the model output, with five columns
+colnames( Summary ) <- c( "rep", "b", "h0", "Eh", "temp", "num_survive" ) #Names the columns in the matrix
+PdParms <- subset( Parms, spp == "PdLong" )
+
+#Some constants:
+M <- PdParms[ 4, 3 ]
+T0 <- PdParms[ 5, 3 ]
+Tl <- PdParms[ 6, 3 ]
+
+row <- 0
+u <- 1
+seednum <- 1
+
+for ( r in 1:num_reps ) {
+  set.seed( 1 + r )
+  
+  b <- rlnorm( 1, meanlog = PdParms$estimate[ which( PdParms$term == "b" ) ],
+               sdlog= PdParms$std.error[ which( PdParms$term == "b" ) ] )
+  h0 <- rlnorm( 1, meanlog = PdParms$estimate[ which( PdParms$term == "h0" ) ],
+               sdlog = PdParms$std.error[ which( PdParms$term == "h0" ) ] )
+  Eh <- rlnorm( 1, meanlog = PdParms$estimate[ which( PdParms$term == "Eh")],
+               sdlog = PdParms$std.error[ which( PdParms$term == "Eh" ) ] )
+
+  for ( l in 1:length( temp ) ) {
+    row <- row + 1
+    N_vec <- c( 300, 0, 0, 0, 0 ) #Vector of prey abundance at each size class at the current time step
+    Summary[ row, "b" ] <- b
+    Summary[ row, "Eh" ] <- Eh
+    Summary[ row, "h0" ] <- h0
+    Summary[ row, "rep" ] = r #predparameters.df[u,1] #Predator species for this loop
+    Summary[ row, "temp" ] = temp[ l ] #Temperature for this loop
+    Summary[ row, "num_survive" ] = Stage_pred_devel(
+      timesteps = 30,
+      N_vec,
+      mval = mvec[ l ],
+      rval = rvec[ l ],
+      bval = b,
+      T0val = T0,
+      Tlval = Tl,
+      h0val = h0,
+      Mval = M,
+      bhval = bh,
+      Ehval = Eh,
+      kval = k,
+      tval = t,
+      tempval = temp[ l ]
+    )
+  }
+}
+
+
+Pd_Summary.df <- as.data.frame( Summary )
+Pd_Summary.df[ , 2:3 ] <- sapply( Pd_Summary.df[ , 2:3 ], as.character )
+Pd_Summary.df[ , 2:3 ] <- sapply( Pd_Summary.df[ , 2:3 ], as.numeric )
+
+Pd_Summary.df$num_survive[ is.na( Pd_Summary.df$num_survive ) ] <- 0
+
+write.csv( Pd_Summary.df, "Output_PdLong.csv", row.names = FALSE )
+```
+
+The model can be re-run with either the temperature-dependence of the predator's feeding rates or prey's development rates excluded (as done in our analysis) by setting temperature to 20 (instead of the vector "temp") in the function that calculates the corresponding parameter.
