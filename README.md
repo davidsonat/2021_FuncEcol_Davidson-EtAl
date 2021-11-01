@@ -1,4 +1,4 @@
-# TempDependent_Predation_Model
+# Davidson et al 2021 (Func Ecol)
 Contains data, modeling functions, and analysis used to fit and simulate stage-dependent predator-prey interactions under varying temperatures.
 
 Files in Folder 1 pertain to fitting temperature-dependent models of prey development and prey mortality rates for Aedes atropalpus larvae.
